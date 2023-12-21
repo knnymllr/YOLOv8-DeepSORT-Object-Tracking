@@ -120,8 +120,6 @@ def UI_box(x, img, color=None, label=None, line_thickness=None):
 
         cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
-
-
 def draw_boxes(img, bbox, names,object_id, identities=None, offset=(0, 0)):
     #cv2.line(img, line[0], line[1], (46,162,112), 3)
 
@@ -150,6 +148,10 @@ def draw_boxes(img, bbox, names,object_id, identities=None, offset=(0, 0)):
         color = compute_color_for_labels(object_id[i])
         obj_name = names[object_id[i]]
         label = '{}{:d}'.format("", id) + ":"+ '%s' % (obj_name)
+        
+        #* Display center coordinates in label
+        label += f' {center}'
+        #*
 
         # add center to buffer
         data_deque[id].appendleft(center)
@@ -165,6 +167,34 @@ def draw_boxes(img, bbox, names,object_id, identities=None, offset=(0, 0)):
             cv2.line(img, data_deque[id][i - 1], data_deque[id][i], color, thickness)
     return img
 
+#*
+def write_center_to_file(bbox, names, path, object_id, identities=None, offset=(0, 0)):
+    for key in list(data_deque):
+      if key not in identities:
+        data_deque.pop(key)
+
+    file = open(path, "a")
+    for i, box in enumerate(bbox):
+        x1, y1, x2, y2 = [int(i) for i in box]
+        x1 += offset[0]
+        x2 += offset[0]
+        y1 += offset[1]
+        y2 += offset[1]
+
+        # code to find center of bottom edge
+        center = (int((x2+x1)/ 2), int((y2+y2)/2))
+
+        # get ID of object
+        id = int(identities[i]) if identities is not None else 0
+
+        obj_name = names[object_id[i]]
+        label = '{}{:d}'.format("", id) + ":"+ '%s\n' % (obj_name)
+        
+        file.write(f'{label}')
+        file.write(f'Center: {center}\n')
+        
+    file.close()
+#*  
 
 class DetectionPredictor(BasePredictor):
 
@@ -206,6 +236,12 @@ class DetectionPredictor(BasePredictor):
 
         self.data_path = p
         save_path = str(self.save_dir / p.name)  # im.jpg
+        
+        #*
+        filetype_index = save_path.rfind(".")
+        text_path = save_path[:filetype_index] + ".txt"
+        #*
+        
         self.txt_path = str(self.save_dir / 'labels' / p.stem) + ('' if self.dataset.mode == 'image' else f'_{frame}')
         log_string += '%gx%g ' % im.shape[2:]  # print string
         self.annotator = self.get_annotator(im0)
@@ -224,7 +260,7 @@ class DetectionPredictor(BasePredictor):
         oids = []
         outputs = []
         for *xyxy, conf, cls in reversed(det):
-            x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)
+            x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)      
             xywh_obj = [x_c, y_c, bbox_w, bbox_h]
             xywh_bboxs.append(xywh_obj)
             confs.append([conf.item()])
@@ -233,15 +269,25 @@ class DetectionPredictor(BasePredictor):
         confss = torch.Tensor(confs)
           
         outputs = deepsort.update(xywhs, confss, oids, im0)
+        
+        #*
+        file = open(text_path, "a")
+        file.write(f"\n{log_string}\n\n")
+        file.close()
+        #*
+        
         if len(outputs) > 0:
             bbox_xyxy = outputs[:, :4]
             identities = outputs[:, -2]
             object_id = outputs[:, -1]
             
             draw_boxes(im0, bbox_xyxy, self.model.names, object_id,identities)
-
+            
+            #*
+            write_center_to_file(bbox_xyxy, self.model.names, text_path, object_id, identities)
+            #*
+            
         return log_string
-
 
 @hydra.main(version_base=None, config_path=str(DEFAULT_CONFIG.parent), config_name=DEFAULT_CONFIG.name)
 def predict(cfg):
@@ -251,7 +297,6 @@ def predict(cfg):
     cfg.source = cfg.source if cfg.source is not None else ROOT / "assets"
     predictor = DetectionPredictor(cfg)
     predictor()
-
 
 if __name__ == "__main__":
     predict()
