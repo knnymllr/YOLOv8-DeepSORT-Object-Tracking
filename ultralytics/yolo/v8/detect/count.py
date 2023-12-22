@@ -29,7 +29,20 @@ object_counter = {}
 
 object_counter1 = {}
 
-line = [(100, 500), (1050, 500)]
+'''
+# line = [(100, 500), (1050, 500)] # Original
+# line = [(0, 0), (x, y)] # Use (0,0) to find endpoint
+
+(x1, y1)                            
+ _____________________________
+|                             |
+|                             |
+|                             |
+|_____________________________|
+                              (x2, y2)
+'''
+line = [(350, 650), (750, 250)]
+
 def init_tracker():
     global deepsort
     cfg_deep = get_config()
